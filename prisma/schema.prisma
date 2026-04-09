@@ -1,0 +1,471 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  RECRUITER
+  HIRING_MANAGER
+  INTERVIEWER
+  EMPLOYEE
+}
+
+enum JobStatus {
+  DRAFT
+  OPEN_EXTERNAL_INTERNAL
+  OPEN_EXTERNAL_ONLY
+  OPEN_INTERNAL_ONLY
+  UNLISTED
+  CLOSED
+}
+
+enum LocationType {
+  REMOTE
+  HYBRID
+  ON_SITE
+}
+
+enum CandidateSource {
+  WEBSITE
+  LINKEDIN
+  MANUAL
+  BULK_UPLOAD
+  REFERRAL
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
+}
+
+enum AssignmentStatus {
+  SENT
+  SUBMITTED
+  UNDER_REVIEW
+  REVIEWED
+  DECISION_MADE
+}
+
+enum AssignmentDecision {
+  ADVANCE
+  REJECT
+  NEEDS_DISCUSSION
+}
+
+enum RewardStatus {
+  PENDING
+  ELIGIBLE
+  APPROVED
+  PAID
+}
+
+enum OnboardingStatus {
+  PENDING
+  EXPORTED
+  FAILED
+}
+
+enum Recommendation {
+  STRONG_YES
+  YES
+  NEUTRAL
+  NO
+  STRONG_NO
+}
+
+enum QuestionType {
+  SHORT_TEXT
+  LONG_TEXT
+  SINGLE_SELECT
+  MULTI_SELECT
+  FILE_UPLOAD
+  URL
+  YES_NO
+}
+
+// ─── Models ─────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(EMPLOYEE)
+  slackId       String?
+  googleId      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts        Account[]
+  sessions        Session[]
+  ownedJobs       Job[]            @relation("JobOwner")
+  feedbackForms   FeedbackFormTemplate[]
+  feedbacks       Feedback[]
+  interviews      InterviewInterviewer[]
+  assignmentReviews AssignmentReviewer[]
+  referralsMade   Referral[]       @relation("Referrer")
+  auditLogs       AuditLog[]
+  availabilityBlocks InterviewerAvailability[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Job {
+  id              String     @id @default(cuid())
+  title           String
+  department      String
+  location        String
+  locationType    LocationType @default(HYBRID)
+  description     String     @db.Text
+  status          JobStatus  @default(DRAFT)
+  applicationUrl  String?    @unique
+  ownerId         String
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  closedAt        DateTime?
+
+  // Relations
+  owner               User                   @relation("JobOwner", fields: [ownerId], references: [id])
+  stages              PipelineStage[]
+  candidates          Candidate[]
+  applicationFormConfig ApplicationFormConfig?
+  feedbackFormTemplates FeedbackFormTemplate[]
+  referrals           Referral[]
+  assignments         Assignment[]
+
+  @@map("jobs")
+}
+
+model PipelineStage {
+  id                 String   @id @default(cuid())
+  jobId              String
+  name               String
+  order              Int
+  automationTriggers Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relations
+  job        Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidates Candidate[]
+  assignments Assignment[]
+
+  @@unique([jobId, order])
+  @@map("pipeline_stages")
+}
+
+model ApplicationFormConfig {
+  id        String   @id @default(cuid())
+  jobId     String   @unique
+  questions Json     // Array of question objects {type, label, required, options?}
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("application_form_configs")
+}
+
+model Candidate {
+  id               String          @id @default(cuid())
+  jobId            String
+  stageId          String?
+  firstName        String
+  lastName         String
+  email            String
+  phone            String?
+  resumeUrl        String?
+  resumeFileKey    String?
+  websiteUrl       String?
+  githubUrl        String?
+  linkedinUrl      String?
+  source           CandidateSource @default(MANUAL)
+  referrerId       String?
+  aiScore          Int?
+  aiScoreBreakdown Json?
+  aiScreeningNote  String?         @db.Text
+  parsedData       Json?
+  formResponses    Json?
+  tags             String[]
+  archived         Boolean         @default(false)
+  archiveReason    String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Relations
+  job         Job            @relation(fields: [jobId], references: [id])
+  stage       PipelineStage? @relation(fields: [stageId], references: [id])
+  interviews  Interview[]
+  feedbacks   Feedback[]
+  assignments Assignment[]
+  referral    Referral?
+  survey      CandidateSurvey?
+  stageHistory CandidateStageHistory[]
+  notes       CandidateNote[]
+
+  @@map("candidates")
+}
+
+model CandidateStageHistory {
+  id          String   @id @default(cuid())
+  candidateId String
+  fromStageId String?
+  toStageId   String?
+  actorId     String?
+  note        String?
+  createdAt   DateTime @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_stage_history")
+}
+
+model CandidateNote {
+  id          String   @id @default(cuid())
+  candidateId String
+  authorId    String
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_notes")
+}
+
+model Interview {
+  id              String          @id @default(cuid())
+  candidateId     String
+  round           String
+  duration        Int             // in minutes
+  scheduledAt     DateTime?
+  calendarEventId String?
+  meetLink        String?
+  selfScheduleToken String?       @unique
+  selfScheduleExpiry DateTime?
+  status          InterviewStatus @default(SCHEDULED)
+  prepDocUrl      String?
+  prepDocContent  String?         @db.Text
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  candidate   Candidate             @relation(fields: [candidateId], references: [id])
+  interviewers InterviewInterviewer[]
+  feedbacks   Feedback[]
+
+  @@map("interviews")
+}
+
+model InterviewInterviewer {
+  interviewId  String
+  interviewerId String
+  createdAt    DateTime @default(now())
+
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  interviewer User      @relation(fields: [interviewerId], references: [id])
+
+  @@id([interviewId, interviewerId])
+  @@map("interview_interviewers")
+}
+
+model InterviewerAvailability {
+  id          String   @id @default(cuid())
+  userId      String
+  dayOfWeek   Int      // 0=Sunday, 1=Monday, ... 6=Saturday
+  startTime   String   // "14:00"
+  endTime     String   // "17:00"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("interviewer_availability")
+}
+
+model FeedbackFormTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  jobId       String?
+  round       String?
+  fieldsConfig Json    // Array of field definitions
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  job       Job?      @relation(fields: [jobId], references: [id])
+  createdBy User      @relation(fields: [createdById], references: [id])
+  feedbacks Feedback[]
+
+  @@map("feedback_form_templates")
+}
+
+model Feedback {
+  id             String         @id @default(cuid())
+  interviewId    String?
+  candidateId    String
+  interviewerId  String
+  templateId     String?
+  formData       Json
+  recommendation Recommendation?
+  submittedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  interview  Interview?           @relation(fields: [interviewId], references: [id])
+  candidate  Candidate            @relation(fields: [candidateId], references: [id])
+  interviewer User               @relation(fields: [interviewerId], references: [id])
+  template   FeedbackFormTemplate? @relation(fields: [templateId], references: [id])
+
+  @@map("feedbacks")
+}
+
+model Assignment {
+  id          String             @id @default(cuid())
+  candidateId String
+  jobId       String
+  stageId     String?
+  briefText   String?            @db.Text
+  briefFileKey String?
+  deadline    DateTime?
+  submissionFileKey String?
+  submissionEmailContent String? @db.Text
+  submittedAt DateTime?
+  status      AssignmentStatus   @default(SENT)
+  decision    AssignmentDecision?
+  reviewScore Int?
+  reviewFeedback String?         @db.Text
+  reviewedAt  DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  candidate  Candidate            @relation(fields: [candidateId], references: [id])
+  job        Job                  @relation(fields: [jobId], references: [id])
+  stage      PipelineStage?       @relation(fields: [stageId], references: [id])
+  reviewers  AssignmentReviewer[]
+
+  @@map("assignments")
+}
+
+model AssignmentReviewer {
+  assignmentId String
+  reviewerId   String
+  createdAt    DateTime @default(now())
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  reviewer   User       @relation(fields: [reviewerId], references: [id])
+
+  @@id([assignmentId, reviewerId])
+  @@map("assignment_reviewers")
+}
+
+model Referral {
+  id              String       @id @default(cuid())
+  referrerId      String
+  candidateId     String       @unique
+  jobId           String
+  relationship    String?
+  recommendation  String?      @db.Text
+  rewardStatus    RewardStatus @default(PENDING)
+  rewardAmount    Float?
+  referenceId     String       @unique @default(cuid())
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  referrer  User      @relation("Referrer", fields: [referrerId], references: [id])
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+  job       Job       @relation(fields: [jobId], references: [id])
+
+  @@map("referrals")
+}
+
+model CandidateSurvey {
+  id          String   @id @default(cuid())
+  candidateId String   @unique
+  rating      Int?     // 1-5
+  nps         Int?     // 0-10
+  comments    String?  @db.Text
+  submittedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("candidate_surveys")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  action     String
+  actorId    String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model OnboardingHandoff {
+  id          String           @id @default(cuid())
+  candidateId String
+  status      OnboardingStatus @default(PENDING)
+  payload     Json
+  error       String?
+  triggeredAt DateTime         @default(now())
+  completedAt DateTime?
+
+  @@map("onboarding_handoffs")
+}
