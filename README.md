@@ -1,70 +1,88 @@
 # TalentHub
 
-An AI-native applicant tracking system. Built to feel like the future,
-not Workday.
+> An AI-native applicant tracking system. Built to feel like the
+> future, not Workday.
 
-> Demo-ready. No real database needed. Spin it up locally in two
-> commands and click around.
+## The pitch
+
+Existing ATS tools optimize for the HR team's compliance audit. The
+candidate is a row in a database. The hiring manager is a CC on an
+email thread. Both groups have learned to hate the tool.
+
+TalentHub flips that: every screen is built for **"do I want to talk
+to this person, and what should I say to them?"** Compliance still
+happens. It's just not the priority.
 
 ## What it does
 
-- **Posts** roles with structured JD breakdowns (skills, must-haves,
-  nice-to-haves).
-- **Ingests** candidates from resumes, LinkedIn URLs, or paste-bin text.
-- **Scores** each candidate against the JD with an LLM, surfacing
-  structured reasoning, not just a number.
-- **Tracks** the funnel — Sourced → Screened → Interview → Offer —
-  with drag-and-drop Kanban.
-- **Drafts** outreach + reject emails, tuned to the specific candidate
-  + role context.
+- **Job posts** with structured JD breakdowns — must-haves,
+  nice-to-haves, deal-breakers — not a wall of text.
+- **Candidate ingestion** from a resume PDF, a LinkedIn URL, or "paste
+  this text dump."
+- **LLM scoring** that returns *reasoning*, not just a number. The
+  recruiter sees "strong on backend depth, light on frontend, no
+  evidence of distributed systems" — not "82%."
+- **Funnel Kanban**: Sourced → Screened → Interview → Offer. Drag,
+  drop, no thinking.
+- **Email drafts** tailored to the candidate + role + stage. Reject
+  emails that don't sound like a Mad Lib.
+- **Demo mode**: zero database. Spin it up locally, click around, leave
+  it running for a stakeholder meeting.
 
 ## Stack
 
-- **Next.js** (App Router) for the frontend
+- **Next.js (App Router)** for routing + RSC
 - **TypeScript** end to end
 - **Drizzle + Postgres** for persistence (or zero-DB demo mode)
-- **Tailwind + shadcn/ui** for the UI
-- **OpenAI** for the scoring + email generation
+- **Tailwind + shadcn/ui** for the UI — yes, very 2025, no apologies
+- **OpenAI** for scoring + email generation
 
-## Getting started
+## Up and running in 60 seconds
 
 ```bash
 pnpm install
 
-# Demo mode — no DB needed, mock data in memory
+# Demo mode — no DB, mock data, click around
 pnpm dev
 
-# Or, real DB:
+# Or with a real DB
 cp .env.example .env
 # Fill in DATABASE_URL + OPENAI_API_KEY
 pnpm db:push
 pnpm dev
 ```
 
-Open `http://localhost:3000` and start clicking.
+Open `http://localhost:3000`. There's a sample role + ten sample
+candidates already loaded.
 
-## Project layout
+## Repo layout
 
 ```
 src/
   app/            Next.js routes (App Router)
-  components/     Reusable UI (Kanban board, candidate cards, etc.)
+  components/     Kanban board, candidate cards, JD editors
   db/             Drizzle schema + migrations
   hooks/          Client-side state hooks
-  lib/            Auth, scoring, LLM helpers
+  lib/            Auth (mock), scoring, LLM helpers, prompts
   types/          Shared TypeScript types
 ```
 
-## Why this exists
+## Calibration: things this is and isn't
 
-ATS tools optimize for HR compliance. Candidates and hiring managers
-are second-class citizens. TalentHub flips that — every screen
-optimizes for "do I want to talk to this person, and what should I say
-to them?"
+✅ A clean playground for "what would a hiring tool look like if you
+   started today, post-LLMs?"
+✅ Demo-ready for stakeholder pitches
+✅ Educational — the scoring + prompt code is small, readable, hackable
 
-## Status
+❌ Production-ready. Auth is mock. Email "sending" is `console.log`.
+   Scoring uses test data unless you wire `OPENAI_API_KEY`. SOC 2
+   not happening.
 
-Demo-grade. Auth is mock. Email sending is "log to console". Scoring
-uses test data unless you add an API key. Production-ready it is not —
-but it's the cleanest playground I had for "what would a hiring tool
-look like if you started today, post-LLMs?"
+## What I'd build next
+
+- Bulk candidate import (LinkedIn Recruiter export, Greenhouse CSV)
+- Calendar integration for interview scheduling — the missing 50% of
+  every ATS
+- Anonymized scoring mode — strip name, school, photo, gender
+  signals before the LLM sees the candidate
+- Outreach response tracking + auto-follow-ups
